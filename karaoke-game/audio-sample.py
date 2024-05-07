@@ -1,5 +1,7 @@
 import pyaudio
 import numpy as np
+import matplotlib
+matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
 
 # Set up audio stream
@@ -42,10 +44,12 @@ plt.show()
 # continuously capture and plot audio singal
 while True:
     # Read audio data from stream
-    data = stream.read(CHUNK_SIZE)
+    #data = stream.read(CHUNK_SIZE)
+    data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
 
     # Convert audio data to numpy array
     data = np.frombuffer(data, dtype=np.int16)
+    print(data)
     line.set_ydata(data)
 
     # Redraw plot
