@@ -41,7 +41,7 @@ ax.set_ylim(-30000, 30000)
 plt.ion()
 plt.show()
 
-# continuously capture and plot audio singal
+# continuously capture and plot audio signal
 while True:
     # Read audio data from stream
     #data = stream.read(CHUNK_SIZE)
