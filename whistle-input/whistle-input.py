@@ -8,6 +8,8 @@ import pyglet
 from pyglet import shapes, clock
 from pynput.keyboard import Key, Controller
 
+#USES CODE FROM audio-sample.py AND dsp-solution.ipynb
+
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
@@ -88,7 +90,6 @@ def get_current_frequency() -> int:
     return max_frequency
 
 class Rectangle:
-
     def __init__(self, y_position):
         self.rect = shapes.Rectangle(x=WINDOW_WIDTH//2 - RECT_WIDTH//2, y=y_position, width=RECT_WIDTH, height=RECT_HEIGHT, color=(0, 0, 255))
         self.selected = False
@@ -179,6 +180,5 @@ def on_draw():
     window.clear()
     for rect in rectangles:
         rect.draw()   
-
 
 pyglet.app.run()

@@ -10,10 +10,8 @@ import sys
 sys.path.append('../read_midi')
 from read_midi import get_midi_data, get_note_from_midi
 from os.path import dirname, join
-import time
-import threading
-import asyncio
 
+#USES CODE FROM audio-sample.py AND dsp-solution.ipynb
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
@@ -24,6 +22,8 @@ RATE = 44100  # Audio sampling rate (Hz)
 p = pyaudio.PyAudio()
 
 A4_FREQUENCY = 440 #https://mixbutton.com/mixing-articles/music-note-to-frequency-chart/
+OCTAVE_SIZE = 12
+MIN_LOUDNESS = 750
 
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 635 # = max midi notes * 5
@@ -31,9 +31,13 @@ RECT_HEIGHT = 5
 NOTE_WIDTH_MULTIPLIER = 100
 window = pyglet.window.Window(WINDOW_WIDTH, WINDOW_HEIGHT)
 
-kernel_size = 20
-kernel_sigma = 1
-sampling_rate = 44100 #https://de.wikipedia.org/wiki/Abtastrate
+KERNEL_SIZE = 20
+KERNEL_SIGMA = 1
+
+current_directory = dirname(__file__)
+midi_file_path = join(current_directory, '../read_midi/freude.mid')
+#midi_file_path = join(current_directory, '../read_midi/berge.mid')
+midi_data = get_midi_data(midi_file_path)
 
 # print info about audio devices
 # let user select audio device
@@ -55,17 +59,8 @@ stream = p.open(format=FORMAT,
                 frames_per_buffer=CHUNK_SIZE,
                 input_device_index=input_device)
 
-# set up interactive plot
-# fig = plt.figure()
-# ax = plt.gca()
-# line, = ax.plot(np.zeros(CHUNK_SIZE))
-# ax.set_ylim(-30000, 30000)
-
-# plt.ion()
-# plt.show()
-
 def apply_kernel(data):
-    kernel = signal.windows.gaussian(kernel_size, kernel_sigma) # create a kernel
+    kernel = signal.windows.gaussian(KERNEL_SIZE, KERNEL_SIGMA) # create a kernel
     kernel /= np.sum(kernel) # normalize the kernel so it does not affect the signal's amplitude
     return np.convolve(data, kernel, 'same') # apply the kernel to the signal
 
@@ -78,7 +73,7 @@ def get_max_frequency(data) -> float:
     spectrum = np.abs(np.fft.fft(data))
     
     # resample x axis of spectrum to match frequency even if sample_length != 1
-    frequencies = np.fft.fftfreq(CHUNK_SIZE, 1/sampling_rate)
+    frequencies = np.fft.fftfreq(CHUNK_SIZE, 1/RATE)
     
     # get rid of negative half
     mask = frequencies >= 0
@@ -94,9 +89,9 @@ def get_note(max_frequency) -> str:
     if max_frequency:
         notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
         # calculate half tones from A4 to max_frequenca
-        half_steps = int(round(12 * np.log2(max_frequency / A4_FREQUENCY)))
+        half_steps = int(round(OCTAVE_SIZE * np.log2(max_frequency / A4_FREQUENCY)))
         # find the note
-        note_index = (half_steps + 9) % 12
+        note_index = (half_steps + 9) % OCTAVE_SIZE
         note = notes[note_index]
         return note
     return ""
@@ -106,8 +101,9 @@ def get_current_note() -> str:
 
     # Convert audio data to numpy array
     data = np.frombuffer(data, dtype=np.int16)
-    #if(np.argmax(data) > 500):
-    #    print("loud")
+
+    if(data[np.argmax(data)] < MIN_LOUDNESS):
+        return "" #voice is not loud enough, avoid background sounds
 
     data = apply_kernel(data)
     data = apply_hamming_window(data)
@@ -134,17 +130,18 @@ class NoteBlock:
         self.rect.draw()
 
     def check_note(self):
-        if(self.rect.x < WINDOW_WIDTH // 3 < self.rect.x + self.rect.width): #note block crosses line
-            if(get_current_note() == self.note):
-                self.change_to_green()
+        if(not self.hit_note):
+            if(self.rect.x < WINDOW_WIDTH // 3 < self.rect.x + self.rect.width): #note block crosses line
+                if(get_current_note() == self.note):
+                    self.change_to_green()
 
 def calculate_duration(midi_data, index):
     length = 0
-    for i in range(index, len(midi_data)):
+    for i in range(index + 1, len(midi_data)):
         length += midi_data[i].time
         if(midi_data[i].type == "note_off"):
             if(midi_data[i].note == midi_data[index].note):
-                return round(length, 3)
+                return length#round(length, 3)
     return length
 
 blocks = []
@@ -157,11 +154,6 @@ def print_block(index, data, midi_data, x_position):
 def move_blocks(dt):
     for block in blocks:
         block.move_left()
-
-current_directory = dirname(__file__)
-#midi_file_path = join(current_directory, '../read_midi/freude.mid')
-midi_file_path = join(current_directory, '../read_midi/berge.mid')
-midi_data = get_midi_data(midi_file_path)
 
 line_x = WINDOW_WIDTH // 3
 line = shapes.Line(line_x, 0, line_x, WINDOW_HEIGHT, color=(255, 255, 255))
@@ -178,48 +170,12 @@ def on_draw():
 def on_activate():
     clock.tick(5)
     actual_time = 0
-    #clock.schedule_interval(move_blocks, 0.01) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
     for index, data in enumerate(midi_data):
-        x_position = actual_time * 100
-        print_block(index, data, midi_data, x_position)
         actual_time += data.time
-    clock.schedule_interval(move_blocks, 0.01) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
+        print(data)
+        x_position = actual_time * NOTE_WIDTH_MULTIPLIER
+        print_block(index, data, midi_data, x_position)
 
+clock.schedule_interval(move_blocks, 0.01) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
 
 pyglet.app.run()
-
-
-# continuously capture and plot audio signal
-#while True:
-if(False):
-    # Read audio data from stream
-    #data = stream.read(CHUNK_SIZE)
-    data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-
-    # Convert audio data to numpy array
-    data = np.frombuffer(data, dtype=np.int16)
-    #print(data)
-
-    #print("MAX loud: ")
-    #print(np.argmax(data))
-
-    if(np.argmax(data) > 500):
-        print("loud")
-
-    data = apply_kernel(data)
-
-    data = apply_hamming_window(data)
-
-    max_frequency = get_max_frequency(data)
-    note = get_note(max_frequency)
-    print(note)
-
-    line.set_ydata(data)
-
-    # Redraw plot
-    fig.canvas.draw()
-    fig.canvas.flush_events()
-
-    # plt.plot(frequencies[mask], spectrum[mask])
-    # plt.legend()
-    # plt.show()
