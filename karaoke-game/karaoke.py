@@ -4,6 +4,16 @@ import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
 from scipy import signal
+import pyglet
+from pyglet import shapes, clock
+import sys
+sys.path.append('../read_midi')
+from read_midi import get_midi_data, get_note_from_midi
+from os.path import dirname, join
+import time
+import threading
+import asyncio
+
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
@@ -12,6 +22,14 @@ FORMAT = pyaudio.paInt16  # Audio format
 CHANNELS = 1  # Mono audio
 RATE = 44100  # Audio sampling rate (Hz)
 p = pyaudio.PyAudio()
+
+A4_FREQUENCY = 440 #https://mixbutton.com/mixing-articles/music-note-to-frequency-chart/
+
+WINDOW_WIDTH = 800
+WINDOW_HEIGHT = 635 # = max midi notes * 5
+RECT_HEIGHT = 5
+NOTE_WIDTH_MULTIPLIER = 100
+window = pyglet.window.Window(WINDOW_WIDTH, WINDOW_HEIGHT)
 
 kernel_size = 20
 kernel_sigma = 1
@@ -38,14 +56,13 @@ stream = p.open(format=FORMAT,
                 input_device_index=input_device)
 
 # set up interactive plot
-fig = plt.figure()
-ax = plt.gca()
-line, = ax.plot(np.zeros(CHUNK_SIZE))
-line2, = ax.plot(np.zeros(CHUNK_SIZE))
-ax.set_ylim(-30000, 30000)
+# fig = plt.figure()
+# ax = plt.gca()
+# line, = ax.plot(np.zeros(CHUNK_SIZE))
+# ax.set_ylim(-30000, 30000)
 
-plt.ion()
-plt.show()
+# plt.ion()
+# plt.show()
 
 def apply_kernel(data):
     kernel = signal.windows.gaussian(kernel_size, kernel_sigma) # create a kernel
@@ -77,17 +94,92 @@ def get_note(max_frequency) -> str:
     print(max_frequency)
     if max_frequency:
         notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        A4_frequency = 440 #https://mixbutton.com/mixing-articles/music-note-to-frequency-chart/
         # calculate half tones from A4 to max_frequenca
-        half_steps = int(round(12 * np.log2(max_frequency / A4_frequency)))
+        half_steps = int(round(12 * np.log2(max_frequency / A4_FREQUENCY)))
         # find the note
         note_index = (half_steps + 9) % 12
         note = notes[note_index]
         return note
     return ""
 
+#class for one note block in the display
+class NoteBlock:
+
+    def __init__(self, midi_note, duration, x_position):
+        self.rect = shapes.Rectangle(x=WINDOW_WIDTH + x_position, y=midi_note * RECT_HEIGHT, width=duration * NOTE_WIDTH_MULTIPLIER, height=RECT_HEIGHT, color=(255, 0, 0))
+
+    def move_left(self):
+        self.rect.x = self.rect.x - 1
+
+    def change_to_green(self):
+        self.rect.color = (0, 255, 0)
+
+    def draw(self):
+        self.rect.draw()
+
+def calculate_duration(midi_data, index):
+    length = 0
+    for i in range(index, len(midi_data)):
+        length += midi_data[i].time
+        if(midi_data[i].type == "note_off"):
+            if(midi_data[i].note == midi_data[index].note):
+                return round(length, 3)
+    return length
+
+blocks = []
+
+def print_block(index, data, midi_data, x_position):
+    if(data.type == "note_on"):
+        block = NoteBlock(data.note, calculate_duration(midi_data, index), x_position)
+        blocks.append(block)
+
+def move_blocks(dt):
+    for block in blocks:
+        block.move_left()
+
+current_directory = dirname(__file__)
+midi_file_path = join(current_directory, '../read_midi/freude.mid')
+midi_data = get_midi_data(midi_file_path)
+
+event = threading.Event()
+
+@window.event
+def on_draw():
+    window.clear()
+    for block in blocks:
+        block.draw()   
+
+@window.event       
+def on_activate():
+    clock.tick(5)
+    actual_time = 0
+    #clock.schedule_interval(move_blocks, 0.01) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
+    for index, data in enumerate(midi_data):
+        step_time = 0.02 
+
+        x_position = actual_time * 100
+        print_block(index, data, midi_data, x_position)
+        actual_time += data.time
+        #clock.tick(data.time) 
+        
+        # remaining_time = data.time
+        
+        # while remaining_time > 0:
+        #     move_blocks(0)  # Bewegung der Blöcke in jedem Schritt
+        #     on_draw()
+        #     clock.tick(step_time)  # Wartezeit für den kleineren Schritt
+        #     remaining_time -= step_time
+        #time.sleep(data.time)
+        #clock.schedule_once(lambda dt: print_block(dt, index, data), data.time) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
+    clock.schedule_interval(move_blocks, 0.01) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
+
+
+pyglet.app.run()
+
+
 # continuously capture and plot audio signal
-while True:
+#while True:
+if(False):
     # Read audio data from stream
     #data = stream.read(CHUNK_SIZE)
     data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
@@ -96,6 +188,12 @@ while True:
     data = np.frombuffer(data, dtype=np.int16)
     #print(data)
 
+    #print("MAX loud: ")
+    #print(np.argmax(data))
+
+    if(np.argmax(data) > 500):
+        print("loud")
+
     data = apply_kernel(data)
 
     data = apply_hamming_window(data)
@@ -103,7 +201,6 @@ while True:
     max_frequency = get_max_frequency(data)
     note = get_note(max_frequency)
     print(note)
-
 
     line.set_ydata(data)
 
