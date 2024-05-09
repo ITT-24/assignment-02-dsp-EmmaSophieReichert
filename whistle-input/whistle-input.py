@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from scipy import signal
 import pyglet
 from pyglet import shapes, clock
+from pynput.keyboard import Key, Controller
 
 
 # Set up audio stream
@@ -127,6 +128,15 @@ def rect_down():
                 rectangles[index - 1].select()
                 return
 
+keyboard = Controller() #https://pynput.readthedocs.io/en/latest/keyboard.html#controlling-the-keyboard
+
+def press_up_key():
+    keyboard.press(Key.up)
+    keyboard.release(Key.up)
+
+def press_down_key():
+    keyboard.press(Key.down)
+    keyboard.release(Key.down)
 
 counter_up = 0
 counter_down = 0
@@ -148,6 +158,7 @@ def whistle_input():
         if(counter_up > 7):
             print("UP INPUT")
             rect_up()
+            press_up_key()
             counter_up = 0
             up_captured = True
     elif(old_fr > fr and not down_captured):
@@ -157,6 +168,7 @@ def whistle_input():
         if(counter_down > 7):
             print("DOWN INPUT")
             rect_down()
+            press_down_key()
             counter_down = 0
             down_captured = True
     old_fr = fr
