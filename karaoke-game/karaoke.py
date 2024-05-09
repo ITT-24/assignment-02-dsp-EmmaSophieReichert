@@ -172,10 +172,9 @@ def on_activate():
     actual_time = 0
     for index, data in enumerate(midi_data):
         actual_time += data.time
-        print(data)
         x_position = actual_time * NOTE_WIDTH_MULTIPLIER
         print_block(index, data, midi_data, x_position)
 
-clock.schedule_interval(move_blocks, 0.01) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
+clock.schedule_interval(move_blocks, 1/NOTE_WIDTH_MULTIPLIER) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
 
 pyglet.app.run()
