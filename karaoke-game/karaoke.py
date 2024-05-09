@@ -91,7 +91,6 @@ def get_max_frequency(data) -> float:
 
 # this method was generated with GPT
 def get_note(max_frequency) -> str:
-    print(max_frequency)
     if max_frequency:
         notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
         # calculate half tones from A4 to max_frequenca
@@ -102,20 +101,42 @@ def get_note(max_frequency) -> str:
         return note
     return ""
 
+def get_current_note() -> str:
+    data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+
+    # Convert audio data to numpy array
+    data = np.frombuffer(data, dtype=np.int16)
+    #if(np.argmax(data) > 500):
+    #    print("loud")
+
+    data = apply_kernel(data)
+    data = apply_hamming_window(data)
+    max_frequency = get_max_frequency(data)
+    note = get_note(max_frequency)
+    return note
+
 #class for one note block in the display
 class NoteBlock:
 
     def __init__(self, midi_note, duration, x_position):
         self.rect = shapes.Rectangle(x=WINDOW_WIDTH + x_position, y=midi_note * RECT_HEIGHT, width=duration * NOTE_WIDTH_MULTIPLIER, height=RECT_HEIGHT, color=(255, 0, 0))
+        self.note = get_note_from_midi(midi_note)
+        self.hit_note = False
 
     def move_left(self):
         self.rect.x = self.rect.x - 1
 
     def change_to_green(self):
+        self.hit_note = True
         self.rect.color = (0, 255, 0)
 
     def draw(self):
         self.rect.draw()
+
+    def check_note(self):
+        if(self.rect.x < WINDOW_WIDTH // 3 < self.rect.x + self.rect.width): #note block crosses line
+            if(get_current_note() == self.note):
+                self.change_to_green()
 
 def calculate_duration(midi_data, index):
     length = 0
@@ -138,15 +159,19 @@ def move_blocks(dt):
         block.move_left()
 
 current_directory = dirname(__file__)
-midi_file_path = join(current_directory, '../read_midi/freude.mid')
+#midi_file_path = join(current_directory, '../read_midi/freude.mid')
+midi_file_path = join(current_directory, '../read_midi/berge.mid')
 midi_data = get_midi_data(midi_file_path)
 
-event = threading.Event()
+line_x = WINDOW_WIDTH // 3
+line = shapes.Line(line_x, 0, line_x, WINDOW_HEIGHT, color=(255, 255, 255))
 
 @window.event
 def on_draw():
     window.clear()
+    line.draw()
     for block in blocks:
+        block.check_note()
         block.draw()   
 
 @window.event       
@@ -155,22 +180,9 @@ def on_activate():
     actual_time = 0
     #clock.schedule_interval(move_blocks, 0.01) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
     for index, data in enumerate(midi_data):
-        step_time = 0.02 
-
         x_position = actual_time * 100
         print_block(index, data, midi_data, x_position)
         actual_time += data.time
-        #clock.tick(data.time) 
-        
-        # remaining_time = data.time
-        
-        # while remaining_time > 0:
-        #     move_blocks(0)  # Bewegung der Blöcke in jedem Schritt
-        #     on_draw()
-        #     clock.tick(step_time)  # Wartezeit für den kleineren Schritt
-        #     remaining_time -= step_time
-        #time.sleep(data.time)
-        #clock.schedule_once(lambda dt: print_block(dt, index, data), data.time) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
     clock.schedule_interval(move_blocks, 0.01) #https://pyglet.readthedocs.io/en/latest/modules/clock.html
 
 
