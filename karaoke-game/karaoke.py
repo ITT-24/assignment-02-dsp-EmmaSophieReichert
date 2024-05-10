@@ -129,10 +129,13 @@ class NoteBlock:
     def draw(self):
         self.rect.draw()
 
-    def check_note(self):
+    def check_note(self, current_note):
+        #print(current_note)
         if(not self.hit_note):
             if(self.rect.x < WINDOW_WIDTH // 3 < self.rect.x + self.rect.width): #note block crosses line
-                if(get_current_note() == self.note):
+                if(current_note == self.note):
+                    # AS: no error margin? oh dear
+                    # AS: why no indicator of currently sang note?
                     self.change_to_green()
 
 def calculate_duration(midi_data, index):
@@ -162,8 +165,11 @@ line = shapes.Line(line_x, 0, line_x, WINDOW_HEIGHT, color=(255, 255, 255))
 def on_draw():
     window.clear()
     line.draw()
+
+    # AS: don't read stream for every block!
+    current_note = get_current_note()
     for block in blocks:
-        block.check_note()
+        block.check_note(current_note)
         block.draw()   
 
 @window.event       

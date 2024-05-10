@@ -8,7 +8,8 @@ from mido import MidiFile
 
 def get_midi_data(midi_file_path) -> list:
     midi_data = []
-    for msg in MidiFile(midi_file_path ).play():
+    # AS: remove .play() to read file quickly
+    for msg in MidiFile(midi_file_path ):
         midi_data.append(msg)
     return midi_data
 
